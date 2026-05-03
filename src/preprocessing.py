@@ -1,32 +1,40 @@
 import pandas as pd
-
-train = pd.read_csv("data/raw/train.csv")
-dev = pd.read_csv("data/raw/dev.csv")
-test = pd.read_csv("data/raw/test.csv")
-
-print("Train:", train.shape)
-print("Dev:", dev.shape)
-print("Test:", test.shape)
-
-print("\nColumns:")
-print(train.columns)
-
-import pandas as pd
+import string
+import os
 from sklearn.model_selection import train_test_split
 
+
+def remove_punctuation(text):
+    return text.translate(str.maketrans("", "", string.punctuation))
+
+
 def clean_text(text):
-    text=str(text)
-    text=text.lower()
-    text=text.strip()
+    text = str(text)
+    text = text.lower()
+    text = remove_punctuation(text)
+    text = text.strip()
     return text
 
-def create_processed_splits():   # Function to create processed splits from the raw train.csv
+
+def prepare_text_columns(df):
+    df["combined_text"] = (
+        df["article"].apply(clean_text) + " " +
+        df["question"].apply(clean_text) + " " +
+        df["A"].apply(clean_text) + " " +
+        df["B"].apply(clean_text) + " " +
+        df["C"].apply(clean_text) + " " +
+        df["D"].apply(clean_text)
+    )
+    return df
+
+
+def create_processed_splits():
     df = pd.read_csv("data/raw/train.csv")
 
     if "Unnamed: 0" in df.columns:
         df = df.drop(columns=["Unnamed: 0"])
 
-    train_df, temp_df = train_test_split(  #split between train and temp 
+    train_df, temp_df = train_test_split(
         df,
         test_size=0.30,
         random_state=42,
@@ -37,8 +45,14 @@ def create_processed_splits():   # Function to create processed splits from the 
         temp_df,
         test_size=0.50,
         random_state=42,
-        stratify=temp_df["answer"]  #equal split of answers between all files
+        stratify=temp_df["answer"]
     )
+
+    train_df = prepare_text_columns(train_df)
+    dev_df = prepare_text_columns(dev_df)
+    test_df = prepare_text_columns(test_df)
+
+    os.makedirs("data/processed", exist_ok=True)
 
     train_df.to_csv("data/processed/train.csv", index=False)
     dev_df.to_csv("data/processed/dev.csv", index=False)
@@ -46,30 +60,20 @@ def create_processed_splits():   # Function to create processed splits from the 
 
     print("Processed splits created")
     print("Train:", train_df.shape)
-    print("Dev:", dev_df.shape)
-    print("Test:", test_df.shape)
+    print("Dev:  ", dev_df.shape)
+    print("Test: ", test_df.shape)
 
-def load_processed_data():   #loads processed data
+
+def load_processed_data():
     train = pd.read_csv("data/processed/train.csv")
-    dev = pd.read_csv("data/processed/dev.csv")
-    test = pd.read_csv("data/processed/test.csv")
-
+    dev   = pd.read_csv("data/processed/dev.csv")
+    test  = pd.read_csv("data/processed/test.csv")
     return train, dev, test
 
-def prepare_text_columns(df):
-    df["combined_text"]= (
-        df["article"].apply(clean_text) + " " +
-        df["question"].apply(clean_text) + " " +
-        df["A"].apply(clean_text) + " " +
-        df["B"].apply(clean_text) + " " +  
-        df["C"].apply(clean_text) + " " +
-        df["D"].apply(clean_text)
-    )
 
-    return df
 if __name__ == "__main__":
     create_processed_splits()
     train, dev, test = load_processed_data()
-    train = prepare_text_columns(train)
-    print("Train data after preprocessing:", train.shape)
+    print("\nColumns:", list(train.columns))
+    print("\nTrain sample:")
     print(train[["combined_text", "answer"]].head())
