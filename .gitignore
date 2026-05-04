@@ -6,3 +6,7 @@ __pycache__/
 data/raw/
 data/processed/
 *.csv
+models/
+*.pkl
+data/
+venv/
