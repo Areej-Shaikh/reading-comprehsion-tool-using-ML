@@ -33,13 +33,12 @@ def create_processed_splits():
 
     if "Unnamed: 0" in df.columns:
         df = df.drop(columns=["Unnamed: 0"])
-
     train_df, temp_df = train_test_split(
-        df,
-        test_size=0.30,
-        random_state=42,
-        stratify=df["answer"]
-    )
+    df,
+    test_size=0.20,
+    random_state=42,
+    stratify=df["answer"]
+)
 
     dev_df, test_df = train_test_split(
         temp_df,
