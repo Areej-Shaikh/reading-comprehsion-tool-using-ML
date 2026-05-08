@@ -183,6 +183,6 @@ The dashboard displays:
 ---
 # Authors
 
-Navaira Azmat
-Areej Shaikh
+- Navaira Azmat
+- Areej Shaikh
 FAST-NUCES Islamabad  
