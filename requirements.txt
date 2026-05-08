@@ -5,5 +5,3 @@ scikit-learn
 matplotlib
 plotly
 joblib
-transformers
-torch
