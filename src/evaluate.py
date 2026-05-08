@@ -4,6 +4,7 @@ import joblib
 import os
 import nltk
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, classification_report
 from nltk.translate.meteor_score import meteor_score
 from rouge_score import rouge_scorer
 
@@ -28,6 +29,63 @@ def load_model_b():
     vectorizer = joblib.load(os.path.join(SAVE_DIR, "distractor_vectorizer.pkl"))
     return model, vectorizer
 
+def build_distractor_eval_dataset(df):
+    rows = []
+    options = ["A", "B", "C", "D"]
+
+    for _, row in df.iterrows():
+        correct = row["answer"]
+
+        for opt in options:
+            text = str(row["article"]) + " " + str(row[opt])
+            label = 0 if opt == correct else 1
+
+            rows.append({
+                "text": text,
+                "label": label
+            })
+
+    return pd.DataFrame(rows)
+
+
+def evaluate_distractor_ranker(df, model, vectorizer):
+    print("\n" + "=" * 60)
+    print("EVALUATING MODEL B DISTRACTOR RANKER")
+    print("=" * 60)
+
+    eval_df = build_distractor_eval_dataset(df)
+
+    X_text = eval_df["text"]
+    y_true = eval_df["label"]
+
+    X = vectorizer.transform(X_text)
+    y_pred = model.predict(X)
+
+    accuracy = accuracy_score(y_true, y_pred)
+    precision = precision_score(y_true, y_pred, zero_division=0)
+    recall = recall_score(y_true, y_pred, zero_division=0)
+    macro_f1 = f1_score(y_true, y_pred, average="macro", zero_division=0)
+    cm = confusion_matrix(y_true, y_pred)
+
+    print("\n── Model B Ranker Results ──")
+    print(f"Accuracy : {accuracy:.4f}")
+    print(f"Precision: {precision:.4f}")
+    print(f"Recall   : {recall:.4f}")
+    print(f"Macro F1 : {macro_f1:.4f}")
+
+    print("\nConfusion Matrix:")
+    print(cm)
+
+    print("\nClassification Report:")
+    print(classification_report(y_true, y_pred, zero_division=0))
+
+    return {
+        "accuracy": round(accuracy, 4),
+        "precision": round(precision, 4),
+        "recall": round(recall, 4),
+        "macro_f1": round(macro_f1, 4),
+        "confusion_matrix": cm
+    }
 # ── BLEU Score ────────────────────────────
 def compute_bleu(reference, hypothesis):
     ref_tokens  = reference.lower().split()
@@ -159,15 +217,24 @@ if __name__ == "__main__":
     print("Loading Model B...")
     model, vectorizer = load_model_b()
 
+    ranker_results = evaluate_distractor_ranker(df, model, vectorizer)
+
     distractor_results = evaluate_distractors(df, vectorizer, n_samples=100)
     hint_results       = evaluate_hints(df, vectorizer, n_samples=100)
 
     print("\n" + "="*60)
     print("FINAL EVALUATION SUMMARY")
     print("="*60)
+
+    print("\nModel B Distractor Ranker:")
+    for k, v in ranker_results.items():
+        if k != "confusion_matrix":
+            print(f"  {k.upper():<10}: {v}")
+
     print("\nDistractor Generation:")
     for k, v in distractor_results.items():
         print(f"  {k.upper():<10}: {v}")
+
     print("\nHint Generation:")
     for k, v in hint_results.items():
         print(f"  {k.upper():<10}: {v}")

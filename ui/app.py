@@ -6,7 +6,7 @@ import os
 import sys
 import time
 import re
-
+from sklearn.metrics import classification_report
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, confusion_matrix
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
@@ -183,6 +183,48 @@ def verify_answer_with_model_a(article, question, selected_option, lr, svm, vec_
 
 # ── Load Models ──────────────────────────
 @st.cache_resource
+def build_model_b_eval_dataset(df):
+    rows = []
+    options = ["A", "B", "C", "D"]
+
+    for _, row in df.iterrows():
+        correct = row["answer"]
+
+        for opt in options:
+            text = str(row["article"]) + " " + str(row[opt])
+            label = 0 if opt == correct else 1
+
+            rows.append({
+                "text": text,
+                "label": label
+            })
+
+    return pd.DataFrame(rows)
+
+
+@st.cache_data
+def evaluate_model_b_static(_model, _vectorizer, df):
+    eval_df = build_model_b_eval_dataset(df)
+
+    X_text = eval_df["text"]
+    y_true = eval_df["label"]
+
+    X = _vectorizer.transform(X_text)
+    y_pred = _model.predict(X)
+
+    acc = round(accuracy_score(y_true, y_pred) * 100, 1)
+    precision = round(precision_score(y_true, y_pred, zero_division=0), 3)
+    recall = round(recall_score(y_true, y_pred, zero_division=0), 3)
+    macro_f1 = round(f1_score(y_true, y_pred, average="macro", zero_division=0), 3)
+
+    cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
+    cm_df = pd.DataFrame(
+        cm,
+        index=["Actual Correct Answer", "Actual Distractor"],
+        columns=["Predicted Correct Answer", "Predicted Distractor"]
+    )
+
+    return acc, precision, recall, macro_f1, cm_df
 def load_models():
     lr    = joblib.load("models/model_a/traditional/logistic_regression_verifier.pkl")
     svm   = joblib.load("models/model_a/traditional/svm_verifier.pkl")
@@ -430,12 +472,16 @@ elif page == "❓ Quiz":
 
             gold_correct = int(selected == r["correct_answer"])
             model_correct = verdict["ensemble_pred"]
-
             if gold_correct:
-                st.success("✅ Correct! Well done!")
+             st.success("✅ Correct! Well done!")
             else:
-                st.error(f"❌ Incorrect. The correct answer was: **{r['correct_answer']}**")
+              st.error(f"❌ Incorrect. The correct answer was: **{r['correct_answer']}**")
 
+            st.markdown("#### Explanation")
+            st.info(
+    f"The answer is supported by this sentence from the passage:\n\n"
+    f"**{r['source_sentence']}**"
+)
             st.markdown("#### Model A Verifier Output")
             st.write(f"Logistic Regression prediction: **{'Correct' if verdict['lr_pred'] == 1 else 'Incorrect'}**")
             st.write(f"SVM prediction: **{'Correct' if verdict['svm_pred'] == 1 else 'Incorrect'}**")
@@ -536,6 +582,26 @@ elif page == "📊 Dashboard":
     c2.metric("Macro F1", model_f1)
     c3.metric("Precision", model_precision)
     c4.metric("Recall", model_recall)
+    st.markdown("### Model B Distractor Ranker Metrics")
+
+try:
+    b_acc, b_precision, b_recall, b_macro_f1, b_cm_df = evaluate_model_b_static(
+        distractor_model,
+        vec_b,
+        df
+    )
+
+    b1, b2, b3, b4 = st.columns(4)
+    b1.metric("Accuracy", f"{b_acc}%")
+    b2.metric("Macro F1", b_macro_f1)
+    b3.metric("Precision", b_precision)
+    b4.metric("Recall", b_recall)
+
+    st.markdown("#### Model B Confusion Matrix")
+    st.dataframe(b_cm_df, use_container_width=True)
+
+except Exception as e:
+    st.warning(f"Could not calculate Model B metrics: {e}")
 
     st.markdown("---")
 
