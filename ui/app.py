@@ -1,15 +1,18 @@
 import streamlit as st
-import joblib
 import numpy as np
 import pandas as pd
+import time
 import os
 import sys
-import time
 import re
+import joblib
+
 from sklearn.metrics import classification_report
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, confusion_matrix
 
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
+
+from inference import generate_quiz, verify_answer
 from model_b_train import get_distractor_candidates, get_hints
 
 # ── Page Config ──────────────────────────
@@ -225,6 +228,8 @@ def evaluate_model_b_static(_model, _vectorizer, df):
     )
 
     return acc, precision, recall, macro_f1, cm_df
+
+
 def load_models():
     lr    = joblib.load("models/model_a/traditional/logistic_regression_verifier.pkl")
     svm   = joblib.load("models/model_a/traditional/svm_verifier.pkl")
@@ -460,6 +465,7 @@ elif page == "❓ Quiz":
     )
     st.session_state.selected = selected
 
+    # FIX 1: col1 and col2 are now properly separated at the same level
     col1, col2 = st.columns(2)
 
     with col1:
@@ -467,25 +473,53 @@ elif page == "❓ Quiz":
             st.session_state.checked = True
 
             start = time.time()
-            verdict = verify_answer_with_model_a(r["article"], r["question"], selected, lr, svm, vec_a)
+
+            models_dict = {
+                "lr": lr,
+                "svm": svm,
+                "vec_a": vec_a
+            }
+
+            verdict = verify_answer(
+                r["article"],
+                r["question"],
+                selected,
+                models_dict
+            )
+
             elapsed = round(time.time() - start, 3)
 
             gold_correct = int(selected == r["correct_answer"])
             model_correct = verdict["ensemble_pred"]
+
             if gold_correct:
-             st.success("✅ Correct! Well done!")
+                st.success("✅ Correct! Well done!")
             else:
-              st.error(f"❌ Incorrect. The correct answer was: **{r['correct_answer']}**")
+                st.error(f"❌ Incorrect. The correct answer was: **{r['correct_answer']}**")
 
             st.markdown("#### Explanation")
+
             st.info(
-    f"The answer is supported by this sentence from the passage:\n\n"
-    f"**{r['source_sentence']}**"
-)
+                f"The answer is supported by this sentence from the passage:\n\n"
+                f"**{r['source_sentence']}**"
+            )
+
             st.markdown("#### Model A Verifier Output")
-            st.write(f"Logistic Regression prediction: **{'Correct' if verdict['lr_pred'] == 1 else 'Incorrect'}**")
-            st.write(f"SVM prediction: **{'Correct' if verdict['svm_pred'] == 1 else 'Incorrect'}**")
-            st.write(f"Hard-vote ensemble prediction: **{'Correct' if model_correct == 1 else 'Incorrect'}**")
+
+            st.write(
+                f"Logistic Regression prediction: "
+                f"**{'Correct' if verdict['lr_pred'] == 1 else 'Incorrect'}**"
+            )
+
+            st.write(
+                f"SVM prediction: "
+                f"**{'Correct' if verdict['svm_pred'] == 1 else 'Incorrect'}**"
+            )
+
+            st.write(
+                f"Hard-vote ensemble prediction: "
+                f"**{'Correct' if model_correct == 1 else 'Incorrect'}**"
+            )
 
             st.session_state.session_log.append({
                 "question": r["question"],
@@ -500,6 +534,7 @@ elif page == "❓ Quiz":
                 "latency_s": elapsed
             })
 
+    # FIX 2: col2 is now properly outside col1, at the same indentation level
     with col2:
         if st.button("💡 Need a hint?", use_container_width=True):
             st.session_state.page = "💡 Hints"
@@ -509,6 +544,7 @@ elif page == "❓ Quiz":
 # ════════════════════════════════════════
 # SCREEN 3 — Hints
 # ════════════════════════════════════════
+# FIX 3: elif is now at the top level, not nested inside the Quiz block
 elif page == "💡 Hints":
     st.title("💡 Hints")
 
@@ -582,30 +618,32 @@ elif page == "📊 Dashboard":
     c2.metric("Macro F1", model_f1)
     c3.metric("Precision", model_precision)
     c4.metric("Recall", model_recall)
+
     st.markdown("### Model B Distractor Ranker Metrics")
 
-try:
-    b_acc, b_precision, b_recall, b_macro_f1, b_cm_df = evaluate_model_b_static(
-        distractor_model,
-        vec_b,
-        df
-    )
+    try:
+        b_acc, b_precision, b_recall, b_macro_f1, b_cm_df = evaluate_model_b_static(
+            distractor_model,
+            vec_b,
+            df
+        )
 
-    b1, b2, b3, b4 = st.columns(4)
-    b1.metric("Accuracy", f"{b_acc}%")
-    b2.metric("Macro F1", b_macro_f1)
-    b3.metric("Precision", b_precision)
-    b4.metric("Recall", b_recall)
+        b1, b2, b3, b4 = st.columns(4)
+        b1.metric("Accuracy", f"{b_acc}%")
+        b2.metric("Macro F1", b_macro_f1)
+        b3.metric("Precision", b_precision)
+        b4.metric("Recall", b_recall)
 
-    st.markdown("#### Model B Confusion Matrix")
-    st.dataframe(b_cm_df, use_container_width=True)
+        st.markdown("#### Model B Confusion Matrix")
+        st.dataframe(b_cm_df, use_container_width=True)
 
-except Exception as e:
-    st.warning(f"Could not calculate Model B metrics: {e}")
+    except Exception as e:
+        st.warning(f"Could not calculate Model B metrics: {e}")
 
     st.markdown("---")
 
     cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
+
     cm_df = pd.DataFrame(
         cm,
         index=["Actual Incorrect", "Actual Correct"],
@@ -619,4 +657,10 @@ except Exception as e:
     st.dataframe(log_df, use_container_width=True)
 
     csv = log_df.to_csv(index=False).encode("utf-8")
-    st.download_button("⬇️ Export to CSV", csv, "session_log.csv", "text/csv")
+
+    st.download_button(
+        "⬇️ Export to CSV",
+        csv,
+        "session_log.csv",
+        "text/csv"
+    )
