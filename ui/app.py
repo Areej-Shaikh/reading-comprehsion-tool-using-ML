@@ -705,7 +705,6 @@ with st.sidebar:
     st.markdown("""
     <div class="rc-sidebar-brand">
         <div class="rc-brand-name">RC Quiz System</div>
-        <div class="rc-brand-sub">classical ml · v1.0</div>
     </div>
     """, unsafe_allow_html=True)
 
