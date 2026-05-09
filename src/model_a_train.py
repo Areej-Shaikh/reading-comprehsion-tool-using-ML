@@ -8,7 +8,6 @@ from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import LinearSVC
 from sklearn.cluster import KMeans
-from sklearn.mixture import GaussianMixture
 from sklearn.semi_supervised import LabelPropagation
 from sklearn.ensemble import RandomForestClassifier, VotingClassifier
 from sklearn.model_selection import train_test_split
@@ -22,9 +21,6 @@ from sklearn.metrics import (
     silhouette_score
 )
 
-# ════════════════════════════════════════
-# PATHS
-# ════════════════════════════════════════
 DATA_TRAIN = "data/processed/train.csv"
 DATA_DEV   = "data/processed/dev.csv"
 SAVE_DIR   = "models/model_a/traditional"
@@ -33,10 +29,6 @@ OPTIONS = ["A", "B", "C", "D"]
 
 os.makedirs(SAVE_DIR, exist_ok=True)
 
-
-# ════════════════════════════════════════
-# GENERAL HELPERS
-# ════════════════════════════════════════
 def clean_text(text):
     text = str(text)
     text = re.sub(r"\s+", " ", text)
@@ -53,19 +45,16 @@ def split_sentences(article):
     return [s.strip() for s in sentences if len(s.strip()) > 20]
 
 
-# ════════════════════════════════════════
-# MODEL A — ANSWER VERIFICATION DATASET
-# ════════════════════════════════════════
 def make_verification_dataset(df):
     dfs = []
 
     for option in OPTIONS:
         temp = pd.DataFrame()
         temp["text"] = (
-            df["article"].fillna("") + " " +
-            df["question"].fillna("") + " " +
-            df[option].fillna("")
-        )
+    "article " + df["article"].fillna("") + " " +
+    "question " + df["question"].fillna("") + " " +
+    "option " + df[option].fillna("")
+            )
         temp["label"] = (df["answer"] == option).astype(int)
         dfs.append(temp)
 
@@ -76,11 +65,6 @@ def clustering_purity(labels_true, labels_pred):
     cm = confusion_matrix(labels_true, labels_pred)
     return cm.max(axis=0).sum() / cm.sum()
 
-
-# ════════════════════════════════════════
-# MODEL A — SUPERVISED VERIFIER MODELS
-# Logistic Regression + SVM
-# ════════════════════════════════════════
 def train_supervised_verifiers():
     print("\n" + "=" * 70)
     print("MODEL A: SUPERVISED ANSWER VERIFIERS")
@@ -100,7 +84,14 @@ def train_supervised_verifiers():
     y_dev        = dev_verify["label"]
 
     print("Vectorizing with One-Hot / binary CountVectorizer...")
-    vectorizer = CountVectorizer(binary=True, max_features=5000)
+    vectorizer = CountVectorizer(
+    binary=True,
+    max_features=10000,
+    ngram_range=(1, 2),
+    stop_words="english",
+    min_df=3,
+    max_df=0.90
+)
     X_train = vectorizer.fit_transform(X_train_text)
     X_dev   = vectorizer.transform(X_dev_text)
 
@@ -109,17 +100,20 @@ def train_supervised_verifiers():
 
     models = {
         "Logistic Regression": LogisticRegression(
-            max_iter=300,
-            solver="saga",
+            max_iter=1000,
+            solver="liblinear",
             class_weight="balanced",
+            C=2.0,
             random_state=42
         ),
-        "SVM": LinearSVC(
-            max_iter=1000,
-            dual=False,
-            class_weight="balanced",
-            random_state=42
-        )
+    "SVM": LinearSVC(
+    max_iter=1500,
+    dual=False,
+    class_weight="balanced",
+    C=0.3,
+    tol=1e-3,
+    random_state=42
+    )
     }
 
     supervised_results = {}
@@ -157,29 +151,26 @@ def train_supervised_verifiers():
 
     return vectorizer, X_train, y_train, X_dev, y_dev, supervised_results
 
-
-# ════════════════════════════════════════
-# MODEL A — ENSEMBLE VERIFIER
-# Hard voting using Logistic Regression + SVM
-# ════════════════════════════════════════
 def train_ensemble_verifier(X_train, y_train, X_dev, y_dev):
     print("\n" + "=" * 70)
     print("MODEL A: HARD-VOTING ENSEMBLE")
     print("=" * 70)
 
-    lr = LogisticRegression(
-        max_iter=300,
-        solver="saga",
-        class_weight="balanced",
-        random_state=42
+    lr =LogisticRegression(
+    max_iter=1000,
+    solver="liblinear",
+    class_weight="balanced",
+    C=2.0,
+    random_state=42
     )
-
     svm = LinearSVC(
-        max_iter=1000,
-        dual=False,
-        class_weight="balanced",
-        random_state=42
-    )
+    max_iter=1500,
+    dual=False,
+    class_weight="balanced",
+    C=0.3,
+    tol=1e-3,
+    random_state=42
+)
 
     ensemble = VotingClassifier(
         estimators=[
@@ -218,10 +209,6 @@ def train_ensemble_verifier(X_train, y_train, X_dev, y_dev):
         "recall": recall
     }
 
-
-# ════════════════════════════════════════
-# MODEL A — UNSUPERVISED: K-MEANS
-# ════════════════════════════════════════
 def run_kmeans(X_dev, y_dev):
     print("\n" + "=" * 70)
     print("MODEL A: K-MEANS CLUSTERING")
@@ -244,42 +231,6 @@ def run_kmeans(X_dev, y_dev):
 
     return sil, purity
 
-
-# ════════════════════════════════════════
-# MODEL A — UNSUPERVISED: GMM
-# ════════════════════════════════════════
-def run_gmm(X_dev, y_dev):
-    print("\n" + "=" * 70)
-    print("MODEL A: GAUSSIAN MIXTURE MODEL")
-    print("=" * 70)
-
-    X_sample = X_dev[:3000].toarray()
-    y_sample = np.array(y_dev)[:3000]
-
-    model = GaussianMixture(
-        n_components=2,
-        random_state=42,
-        covariance_type="diag"
-    )
-
-    model.fit(X_sample)
-    cluster_labels = model.predict(X_sample)
-
-    sil = silhouette_score(X_sample, cluster_labels, metric="euclidean")
-    purity = clustering_purity(y_sample, cluster_labels)
-
-    print("Silhouette Score :", round(sil, 4))
-    print("Clustering Purity:", round(purity, 4))
-
-    joblib.dump(model, os.path.join(SAVE_DIR, "gmm.pkl"))
-    print("Saved: gmm.pkl")
-
-    return sil, purity
-
-
-# ════════════════════════════════════════
-# MODEL A — SEMI-SUPERVISED: LABEL PROPAGATION
-# ════════════════════════════════════════
 def run_label_propagation(X_train, y_train, X_dev, y_dev):
     print("\n" + "=" * 70)
     print("MODEL A: LABEL PROPAGATION")
@@ -321,11 +272,6 @@ def run_label_propagation(X_train, y_train, X_dev, y_dev):
 
     return acc, f1
 
-
-# ════════════════════════════════════════
-# MODEL A — QUESTION GENERATION HELPERS
-# Candidate extraction + templates + trained ranker
-# ════════════════════════════════════════
 def sentence_score(sentence, answer):
     s_tokens = tokenize(sentence)
     a_tokens = tokenize(answer)
@@ -457,10 +403,6 @@ def make_question_ranker_feature_text(df):
     )
 
 
-# ════════════════════════════════════════
-# MODEL A — TRAINED QUESTION RANKER
-# Random Forest ranker
-# ════════════════════════════════════════
 def train_question_ranker():
     print("\n" + "=" * 70)
     print("MODEL A: QUESTION GENERATION RANKER")
@@ -489,9 +431,12 @@ def train_question_ranker():
 
     print("Vectorizing ranker data...")
     vectorizer = CountVectorizer(
-        binary=True,
-        max_features=8000,
-        ngram_range=(1, 2)
+    binary=True,
+    max_features=10000,
+    ngram_range=(1, 2),
+    stop_words="english",
+    min_df=3,
+    max_df=0.90
     )
 
     X_train = vectorizer.fit_transform(X_train_text)
@@ -538,11 +483,7 @@ def train_question_ranker():
         "recall": recall
     }
 
-
-# ════════════════════════════════════════
-# FINAL COMPARISON TABLE
-# ════════════════════════════════════════
-def print_final_summary(supervised_results, ensemble_results, kmeans_results, gmm_results, label_prop_results, question_ranker_results):
+def print_final_summary(supervised_results, ensemble_results, kmeans_results, label_prop_results, question_ranker_results):
     print("\n" + "=" * 90)
     print("FINAL MODEL A SUMMARY")
     print("=" * 90)
@@ -573,8 +514,6 @@ def print_final_summary(supervised_results, ensemble_results, kmeans_results, gm
     print("-" * 60)
     print(f"{'K-Means':<25} {'Silhouette':>15} {kmeans_results[0]:>15.4f}")
     print(f"{'K-Means':<25} {'Purity':>15} {kmeans_results[1]:>15.4f}")
-    print(f"{'GMM':<25} {'Silhouette':>15} {gmm_results[0]:>15.4f}")
-    print(f"{'GMM':<25} {'Purity':>15} {gmm_results[1]:>15.4f}")
     print(f"{'Label Propagation':<25} {'Accuracy':>15} {label_prop_results[0]:>15.4f}")
     print(f"{'Label Propagation':<25} {'Macro F1':>15} {label_prop_results[1]:>15.4f}")
 
@@ -588,18 +527,12 @@ def print_final_summary(supervised_results, ensemble_results, kmeans_results, gm
     print(SAVE_DIR)
     print("=" * 90)
 
-
-# ════════════════════════════════════════
-# MAIN
-# ════════════════════════════════════════
 if __name__ == "__main__":
     vectorizer, X_train, y_train, X_dev, y_dev, supervised_results = train_supervised_verifiers()
 
     ensemble_results = train_ensemble_verifier(X_train, y_train, X_dev, y_dev)
 
     kmeans_results = run_kmeans(X_dev, y_dev)
-
-    gmm_results = run_gmm(X_dev, y_dev)
 
     label_prop_results = run_label_propagation(X_train, y_train, X_dev, y_dev)
 
@@ -609,7 +542,6 @@ if __name__ == "__main__":
         supervised_results,
         ensemble_results,
         kmeans_results,
-        gmm_results,
         label_prop_results,
         question_ranker_results
     )

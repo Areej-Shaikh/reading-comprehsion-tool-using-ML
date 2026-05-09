@@ -449,9 +449,6 @@ elif page == "❓ Quiz":
     st.caption(f"Question ranker: {r.get('ranker_used', 'N/A')}")
     st.markdown(f"**{r['question']}**")
 
-    with st.expander("Model A source sentence"):
-        st.write(r["source_sentence"])
-
     st.markdown("### Choose your answer:")
 
     options = r["options"]
@@ -465,81 +462,72 @@ elif page == "❓ Quiz":
     )
     st.session_state.selected = selected
 
-    # FIX 1: col1 and col2 are now properly separated at the same level
-    col1, col2 = st.columns(2)
+    if st.button("✅ Check Answer", type="primary", use_container_width=True):
+        st.session_state.checked = True
 
-    with col1:
-        if st.button("✅ Check Answer", type="primary", use_container_width=True):
-            st.session_state.checked = True
+        start = time.time()
 
-            start = time.time()
+        models_dict = {
+            "lr": lr,
+            "svm": svm,
+            "vec_a": vec_a
+        }
 
-            models_dict = {
-                "lr": lr,
-                "svm": svm,
-                "vec_a": vec_a
-            }
+        verdict = verify_answer(
+            r["article"],
+            r["question"],
+            selected,
+            models_dict
+        )
 
-            verdict = verify_answer(
-                r["article"],
-                r["question"],
-                selected,
-                models_dict
-            )
+        elapsed = round(time.time() - start, 3)
 
-            elapsed = round(time.time() - start, 3)
+        gold_correct = int(selected == r["correct_answer"])
+        model_correct = verdict["ensemble_pred"]
 
-            gold_correct = int(selected == r["correct_answer"])
-            model_correct = verdict["ensemble_pred"]
+        if gold_correct:
+            st.success("✅ Correct! Well done!")
+        else:
+            st.error(f"❌ Incorrect. The correct answer was: **{r['correct_answer']}**")
 
-            if gold_correct:
-                st.success("✅ Correct! Well done!")
-            else:
-                st.error(f"❌ Incorrect. The correct answer was: **{r['correct_answer']}**")
+        st.markdown("#### Explanation")
 
-            st.markdown("#### Explanation")
+        st.info(
+          f"The answer is supported by this sentence from the passage:\n\n"
+            f"**{r['source_sentence']}**"
+        )
 
-            st.info(
-                f"The answer is supported by this sentence from the passage:\n\n"
-                f"**{r['source_sentence']}**"
-            )
+        st.markdown("#### Model A Verifier Output")
 
-            st.markdown("#### Model A Verifier Output")
+        st.write(
+            f"Logistic Regression prediction: "
+            f"**{'Correct' if verdict['lr_pred'] == 1 else 'Incorrect'}**"
+        )
 
-            st.write(
-                f"Logistic Regression prediction: "
-                f"**{'Correct' if verdict['lr_pred'] == 1 else 'Incorrect'}**"
-            )
+        st.write(
+            f"SVM prediction: "
+            f"**{'Correct' if verdict['svm_pred'] == 1 else 'Incorrect'}**"
+        )
 
-            st.write(
-                f"SVM prediction: "
-                f"**{'Correct' if verdict['svm_pred'] == 1 else 'Incorrect'}**"
-            )
+        st.write(
+            f"Hard-vote ensemble prediction: "
+            f"**{'Correct' if model_correct == 1 else 'Incorrect'}**"
+        )
 
-            st.write(
-                f"Hard-vote ensemble prediction: "
-                f"**{'Correct' if model_correct == 1 else 'Incorrect'}**"
-            )
-
-            st.session_state.session_log.append({
-                "question": r["question"],
-                "question_source": r["question_source"],
-                "selected": selected,
-                "correct": r["correct_answer"],
-                "gold_label": gold_correct,
-                "lr_pred": verdict["lr_pred"],
-                "svm_pred": verdict["svm_pred"],
-                "ensemble_pred": verdict["ensemble_pred"],
-                "exact_match": gold_correct,
-                "latency_s": elapsed
-            })
-
+        st.session_state.session_log.append({
+            "question": r["question"],
+            "question_source": r["question_source"],
+            "selected": selected,
+            "correct": r["correct_answer"],
+            "gold_label": gold_correct,
+            "lr_pred": verdict["lr_pred"],
+            "svm_pred": verdict["svm_pred"],
+            "ensemble_pred": verdict["ensemble_pred"],
+            "exact_match": gold_correct,
+            "latency_s": elapsed
+    })
     # FIX 2: col2 is now properly outside col1, at the same indentation level
-    with col2:
-        if st.button("💡 Need a hint?", use_container_width=True):
-            st.session_state.page = "💡 Hints"
-            st.rerun()
-
+  
 
 # ════════════════════════════════════════
 # SCREEN 3 — Hints
@@ -587,39 +575,84 @@ elif page == "💡 Hints":
 elif page == "📊 Dashboard":
     st.title("📊 Analytics Dashboard")
 
-    if not st.session_state.session_log:
-        st.info("📭 No quiz attempts yet. Answer some questions first!")
-        st.stop()
+    # Fixed training/evaluation results from model_a_train.py
+    MODEL_A_RESULTS = {
+        "Logistic Regression": [51.60, 0.4801, 0.2599, 0.5065],
+        "SVM": [51.60, 0.4802, 0.2600, 0.5069],
+        "Hard Voting Ensemble": [51.63, 0.4803, 0.2599, 0.5062]
+    }
 
-    log_df = pd.DataFrame(st.session_state.session_log)
+    UNSUPERVISED_RESULTS = {
+        "K-Means Silhouette": 0.0095,
+        "K-Means Purity": 0.7913,
+        "Label Propagation Accuracy": 0.7793,
+        "Label Propagation Macro F1": 0.4552
+    }
 
-    y_true = log_df["gold_label"].astype(int)
-    y_pred = log_df["ensemble_pred"].astype(int)
+    ENSEMBLE_CM = pd.DataFrame(
+        [[13698, 12663],
+         [4339, 4448]],
+        index=["Actual Incorrect", "Actual Correct"],
+        columns=["Predicted Incorrect", "Predicted Correct"]
+    )
 
-    total = len(log_df)
-    exact_matches = int(log_df["exact_match"].sum())
-    user_accuracy = round(exact_matches / total * 100, 1)
+    # Live session metrics
+    st.markdown("## Live Session Metrics")
 
-    model_accuracy = round(accuracy_score(y_true, y_pred) * 100, 1)
-    model_f1 = round(f1_score(y_true, y_pred, average="macro", zero_division=0), 3)
-    model_precision = round(precision_score(y_true, y_pred, zero_division=0), 3)
-    model_recall = round(recall_score(y_true, y_pred, zero_division=0), 3)
-    avg_lat = round(log_df["latency_s"].mean(), 3)
+    if st.session_state.session_log:
+        log_df = pd.DataFrame(st.session_state.session_log)
 
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Total Attempts", total)
-    col2.metric("Exact Matches", exact_matches)
-    col3.metric("User Accuracy", f"{user_accuracy}%")
-    col4.metric("Avg Verify Latency", f"{avg_lat}s")
+        total = len(log_df)
+        exact_matches = int(log_df["exact_match"].sum())
+        user_accuracy = round(exact_matches / total * 100, 1)
+        avg_lat = round(log_df["latency_s"].mean(), 3)
 
-    st.markdown("### Model A Verifier Metrics")
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Accuracy", f"{model_accuracy}%")
-    c2.metric("Macro F1", model_f1)
-    c3.metric("Precision", model_precision)
-    c4.metric("Recall", model_recall)
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Total Attempts", total)
+        col2.metric("Exact Matches", exact_matches)
+        col3.metric("User Accuracy", f"{user_accuracy}%")
+        col4.metric("Avg Verify Latency", f"{avg_lat}s")
+    else:
+        st.info("No live quiz attempts yet.")
+        log_df = pd.DataFrame()
 
-    st.markdown("### Model B Distractor Ranker Metrics")
+    st.markdown("---")
+
+    # Model A fixed training metrics
+    st.markdown("## Model A — Trained Verifier Metrics")
+
+    a1, a2, a3, a4 = st.columns(4)
+    a1.metric("Ensemble Accuracy", "51.63%")
+    a2.metric("Ensemble Macro F1", "0.4803")
+    a3.metric("Precision", "0.2599")
+    a4.metric("Recall", "0.5062")
+
+    model_a_df = pd.DataFrame(
+        MODEL_A_RESULTS,
+        index=["Accuracy (%)", "Macro F1", "Precision", "Recall"]
+    ).T
+
+    st.markdown("### Model A Comparison Table")
+    st.dataframe(model_a_df, use_container_width=True)
+
+    st.markdown("### Model A Ensemble Confusion Matrix")
+    st.dataframe(ENSEMBLE_CM, use_container_width=True)
+
+    st.markdown("---")
+
+    # Unsupervised / semi-supervised metrics
+    st.markdown("## Model A — Unsupervised / Semi-Supervised Results")
+
+    u1, u2, u3, u4 = st.columns(4)
+    u1.metric("K-Means Silhouette", UNSUPERVISED_RESULTS["K-Means Silhouette"])
+    u2.metric("K-Means Purity", UNSUPERVISED_RESULTS["K-Means Purity"])
+    u3.metric("Label Prop Accuracy", UNSUPERVISED_RESULTS["Label Propagation Accuracy"])
+    u4.metric("Label Prop Macro F1", UNSUPERVISED_RESULTS["Label Propagation Macro F1"])
+
+    st.markdown("---")
+
+    # Model B metrics
+    st.markdown("## Model B — Distractor Ranker Metrics")
 
     try:
         b_acc, b_precision, b_recall, b_macro_f1, b_cm_df = evaluate_model_b_static(
@@ -634,7 +667,7 @@ elif page == "📊 Dashboard":
         b3.metric("Precision", b_precision)
         b4.metric("Recall", b_recall)
 
-        st.markdown("#### Model B Confusion Matrix")
+        st.markdown("### Model B Confusion Matrix")
         st.dataframe(b_cm_df, use_container_width=True)
 
     except Exception as e:
@@ -642,25 +675,19 @@ elif page == "📊 Dashboard":
 
     st.markdown("---")
 
-    cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
+    # Session log
+    st.markdown("## Session Log")
 
-    cm_df = pd.DataFrame(
-        cm,
-        index=["Actual Incorrect", "Actual Correct"],
-        columns=["Predicted Incorrect", "Predicted Correct"]
-    )
+    if not log_df.empty:
+        st.dataframe(log_df, use_container_width=True)
 
-    st.markdown("### Confusion Matrix")
-    st.dataframe(cm_df, use_container_width=True)
+        csv = log_df.to_csv(index=False).encode("utf-8")
 
-    st.markdown("### Session Log")
-    st.dataframe(log_df, use_container_width=True)
-
-    csv = log_df.to_csv(index=False).encode("utf-8")
-
-    st.download_button(
-        "⬇️ Export to CSV",
-        csv,
-        "session_log.csv",
-        "text/csv"
-    )
+        st.download_button(
+            "⬇️ Export Session Log to CSV",
+            csv,
+            "session_log.csv",
+            "text/csv"
+        )
+    else:
+        st.info("Session log will appear after quiz attempts.")
