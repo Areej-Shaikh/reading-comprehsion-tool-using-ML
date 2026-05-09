@@ -8,27 +8,26 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from nltk.translate.meteor_score import meteor_score
 from rouge_score import rouge_scorer
 
-# Download required nltk data
 nltk.download('wordnet')
 nltk.download('omw-1.4')
 nltk.download('punkt')
 nltk.download('punkt_tab')
 
-# ── Import Model B functions ──────────────
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__)))
 from model_b_train import get_distractor_candidates, get_hints
 
-# ── Paths ─────────────────────────────────
+
 DATA_TEST = "data/processed/test.csv"
 SAVE_DIR  = "models/model_b/traditional"
 
-# ── Load Model B artifacts ─────────────────
+
 def load_model_b():
     model     = joblib.load(os.path.join(SAVE_DIR, "distractor_ranker.pkl"))
     vectorizer = joblib.load(os.path.join(SAVE_DIR, "distractor_vectorizer.pkl"))
     return model, vectorizer
 
+#evaluate distractors using accuracy, precision, recall, F1, and confusion matrix
 def build_distractor_eval_dataset(df):
     rows = []
     options = ["A", "B", "C", "D"]
@@ -47,7 +46,7 @@ def build_distractor_eval_dataset(df):
 
     return pd.DataFrame(rows)
 
-
+#evaluate the distractor ranker on the test set
 def evaluate_distractor_ranker(df, model, vectorizer):
     print("\n" + "=" * 60)
     print("EVALUATING MODEL B DISTRACTOR RANKER")
@@ -86,14 +85,15 @@ def evaluate_distractor_ranker(df, model, vectorizer):
         "macro_f1": round(macro_f1, 4),
         "confusion_matrix": cm
     }
-# ── BLEU Score ────────────────────────────
+
+#comopute BLEU
 def compute_bleu(reference, hypothesis):
     ref_tokens  = reference.lower().split()
     hyp_tokens  = hypothesis.lower().split()
     smoothie    = SmoothingFunction().method1
     return sentence_bleu([ref_tokens], hyp_tokens, smoothing_function=smoothie)
 
-# ── ROUGE Score ───────────────────────────
+#compute ROUGE scores
 def compute_rouge(reference, hypothesis):
     scorer = rouge_scorer.RougeScorer(['rouge1', 'rouge2', 'rougeL'], use_stemmer=True)
     scores = scorer.score(reference, hypothesis)
@@ -103,13 +103,13 @@ def compute_rouge(reference, hypothesis):
         "rougeL": scores["rougeL"].fmeasure,
     }
 
-# ── METEOR Score ──────────────────────────
+#compute METEOR score
 def compute_meteor(reference, hypothesis):
     ref_tokens = nltk.word_tokenize(reference.lower())
     hyp_tokens = nltk.word_tokenize(hypothesis.lower())
     return meteor_score([ref_tokens], hyp_tokens)
 
-# ── Evaluate Distractors ──────────────────
+#evaluate generated distractors using bleu, rouge, and meteor
 def evaluate_distractors(df, vectorizer, n_samples=100):
     print("\n" + "="*60)
     print("EVALUATING DISTRACTORS — BLEU, ROUGE, METEOR")
@@ -128,13 +128,10 @@ def evaluate_distractors(df, vectorizer, n_samples=100):
         article        = str(row["article"])
         correct_answer = str(row[row["answer"]])
 
-        # Get wrong options from dataset as reference distractors
         wrong_options = [str(row[o]) for o in options if o != row["answer"]]
 
-        # Generate distractors using Model B
         generated = get_distractor_candidates(article, correct_answer, vectorizer)
 
-        # Compare each generated distractor to reference wrong options
         for gen, ref in zip(generated, wrong_options):
             bleu_scores.append(compute_bleu(ref, gen))
             rouge = compute_rouge(ref, gen)
@@ -159,7 +156,7 @@ def evaluate_distractors(df, vectorizer, n_samples=100):
         "meteor": round(np.mean(meteor_scores), 4),
     }
 
-# ── Evaluate Hints ────────────────────────
+#evaluate generated hints using bleu, rouge, and meteor
 def evaluate_hints(df, vectorizer, n_samples=100):
     print("\n" + "="*60)
     print("EVALUATING HINTS — BLEU, ROUGE, METEOR")
@@ -177,13 +174,10 @@ def evaluate_hints(df, vectorizer, n_samples=100):
         article  = str(row["article"])
         question = str(row["question"])
 
-        # Use the correct answer as the reference
         reference = str(row[row["answer"]])
 
-        # Generate hints using Model B
         hints = get_hints(article, question, vectorizer)
 
-        # Evaluate the most specific hint (hint 3) against reference
         best_hint = hints[-1]
 
         bleu_scores.append(compute_bleu(reference, best_hint))
@@ -209,7 +203,6 @@ def evaluate_hints(df, vectorizer, n_samples=100):
         "meteor": round(np.mean(meteor_scores), 4),
     }
 
-# ── Main ──────────────────────────────────
 if __name__ == "__main__":
     print("Loading test data...")
     df = pd.read_csv(DATA_TEST)

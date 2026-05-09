@@ -24,7 +24,7 @@ def split_sentences(article):
 def tokenize(text):
     return set(re.findall(r"[a-zA-Z]+", str(text).lower()))
 
-
+#compute a score for how well a sentence matches the answer
 def sentence_score(sentence, answer):
     s_tokens = tokenize(sentence)
     a_tokens = tokenize(answer)
@@ -38,7 +38,7 @@ def sentence_score(sentence, answer):
 
     return overlap + answer_bonus - length_penalty
 
-
+#choose candidate sentence from article based on answer
 def choose_candidate_sentence(article, answer):
     sentences = split_sentences(article)
 
@@ -50,7 +50,7 @@ def choose_candidate_sentence(article, answer):
 
     return scored[0][1]
 
-
+#guess wh-word based on answer type
 def guess_wh_word(answer):
     answer = str(answer).strip()
 
@@ -75,7 +75,7 @@ def guess_wh_word(answer):
 
     return "What"
 
-
+#generate candidate questions based on sentence and answer
 def generate_candidate_questions(sentence, answer):
     sentence = clean_text(sentence)
     answer = clean_text(answer)
@@ -95,7 +95,7 @@ def generate_candidate_questions(sentence, answer):
 
     return questions
 
-
+#generate distractors based on cosine similarity to correct answer
 def load_models():
     lr = joblib.load("models/model_a/traditional/logistic_regression_verifier.pkl")
     svm = joblib.load("models/model_a/traditional/svm_verifier.pkl")
@@ -124,7 +124,7 @@ def load_models():
         "question_ranker_vectorizer": question_ranker_vectorizer
     }
 
-
+#clean text for inference
 def generate_question(article, correct_answer, question_ranker=None, question_ranker_vectorizer=None):
     source_sentence = choose_candidate_sentence(article, correct_answer)
     questions = generate_candidate_questions(source_sentence, correct_answer)
@@ -151,7 +151,7 @@ def generate_question(article, correct_answer, question_ranker=None, question_ra
 
     return questions[0], source_sentence, "Template fallback ranker"
 
-
+#main function to generate quiz question, options, and hints
 def generate_quiz(article, correct_answer, models, provided_question=None):
     if provided_question is None or clean_text(provided_question) == "":
         question, source_sentence, ranker_used = generate_question(
@@ -192,7 +192,7 @@ def generate_quiz(article, correct_answer, models, provided_question=None):
         "ranker_used": ranker_used
     }
 
-
+#verify answer using ensemble of model a classifiers
 def verify_answer(article, question, selected_option, models):
     combined = clean_text(article) + " " + clean_text(question) + " " + clean_text(selected_option)
     X = models["vec_a"].transform([combined])

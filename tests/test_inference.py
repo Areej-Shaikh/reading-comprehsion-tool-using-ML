@@ -5,7 +5,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "s
 
 from model_b_train import get_distractor_candidates, get_hints
 
-
+#tests for inference functions and model files
 def test_model_files_exist():
     assert os.path.exists("models/model_a/traditional/logistic_regression_verifier.pkl")
     assert os.path.exists("models/model_a/traditional/svm_verifier.pkl")
@@ -13,13 +13,13 @@ def test_model_files_exist():
     assert os.path.exists("models/model_b/traditional/distractor_ranker.pkl")
     assert os.path.exists("models/model_b/traditional/distractor_vectorizer.pkl")
 
-
+#tests for preprocessing functions and processed data files
 def test_processed_data_exists():
     assert os.path.exists("data/processed/train.csv")
     assert os.path.exists("data/processed/dev.csv")
     assert os.path.exists("data/processed/test.csv")
 
-
+#distractor generation and hint generation functions tests
 def test_distractor_generation_basic():
     import joblib
 
@@ -37,7 +37,7 @@ def test_distractor_generation_basic():
     assert len(distractors) == 3
     assert all(isinstance(d, str) for d in distractors)
 
-
+#hint generation tests
 def test_hint_generation_basic():
     import joblib
 

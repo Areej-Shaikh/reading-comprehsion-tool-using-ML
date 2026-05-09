@@ -11,53 +11,41 @@ DATA_TRAIN = "data/processed/train.csv"
 DATA_DEV   = "data/processed/dev.csv"
 SAVE_DIR   = "models/model_b/traditional"
 
-# ─────────────────────────────────────────
-# HELPER: clean text
-# ─────────────────────────────────────────
+#clean text
 def clean(text):
     return str(text).lower().strip()
 
-# ─────────────────────────────────────────
-# DISTRACTOR GENERATION
-# Gets 3 wrong options ranked by cosine similarity to correct answer
-# ─────────────────────────────────────────
+#get distractor candidates based on cosine similarity
 def get_distractor_candidates(article, correct_answer, vectorizer):
-    # Split article into sentences
     sentences = [s.strip() for s in article.split('.') if len(s.strip()) > 10]
     if not sentences:
         return ["No distractor found", "No distractor found", "No distractor found"]
 
-    # Vectorize correct answer and all sentences
+
     correct_vec = vectorizer.transform([clean(correct_answer)])
     sentence_vecs = vectorizer.transform([clean(s) for s in sentences])
 
-    # Compute cosine similarity between each sentence and correct answer
+
     sims = cosine_similarity(correct_vec, sentence_vecs)[0]
 
-    # Sort sentences by similarity — medium similarity = good distractors
     sorted_indices = np.argsort(sims)
 
-    # Pick 3 sentences that are NOT the most similar (not too close, not too far)
     mid = len(sorted_indices) // 2
     distractor_indices = sorted_indices[mid:mid+3]
 
     distractors = []
     for idx in distractor_indices:
-        # Take first 15 words of sentence as distractor
+
         words = sentences[idx].split()[:15]
         distractors.append(' '.join(words))
 
-    # Pad if less than 3
+#adding placeholders
     while len(distractors) < 3:
         distractors.append("Not enough content")
 
     return distractors[:3]
 
-
-# ─────────────────────────────────────────
-# HINT GENERATION
-# Returns 3 hints ranked from vague to specific
-# ─────────────────────────────────────────
+#get hints based on cosine similarity to question
 def get_hints(article, question, vectorizer):
     sentences = [s.strip() for s in article.split('.') if len(s.strip()) > 10]
     if not sentences:
@@ -65,33 +53,26 @@ def get_hints(article, question, vectorizer):
                 "Look for key words from the question.",
                 "The answer is directly stated in the passage."]
 
-    # Vectorize question and all sentences
+
     question_vec = vectorizer.transform([clean(question)])
     sentence_vecs = vectorizer.transform([clean(s) for s in sentences])
 
-    # Rank sentences by similarity to question
+
     sims = cosine_similarity(question_vec, sentence_vecs)[0]
-    ranked = np.argsort(sims)[::-1]  # highest similarity first
+    ranked = np.argsort(sims)[::-1]  
 
     hints = []
     for idx in ranked[:3]:
         words = sentences[idx].split()[:20]
         hints.append(' '.join(words))
 
-    # Pad if less than 3
     while len(hints) < 3:
         hints.append("Re-read the passage carefully.")
 
-    # Return from vague to specific (reverse so hint1=vague, hint3=specific)
     hints = hints[::-1]
     return hints
 
-
-# ─────────────────────────────────────────
-# BUILD DISTRACTOR RANKING DATASET
-# Label = 1 if candidate is a wrong option (plausible distractor)
-#         0 if candidate is the correct answer
-# ─────────────────────────────────────────
+#build dataset for training distractor ranker
 def build_distractor_dataset(df):
     rows = []
     options = ["A", "B", "C", "D"]
@@ -102,11 +83,7 @@ def build_distractor_dataset(df):
             label = 0 if opt == correct else 1  # 1 = distractor, 0 = correct
             rows.append({"text": text, "label": label})
     return pd.DataFrame(rows)
-
-
-# ─────────────────────────────────────────
-# MAIN TRAINING FUNCTION
-# ─────────────────────────────────────────
+#train Model B
 def train_model_b():
     print("Loading data...")
     train = pd.read_csv(DATA_TRAIN)
@@ -138,7 +115,6 @@ def train_model_b():
     print("Macro F1 :", f1_score(y_dev, preds, average="macro"))
     print(classification_report(y_dev, preds))
 
-    # Save model and vectorizer
     os.makedirs(SAVE_DIR, exist_ok=True)
     joblib.dump(model,      os.path.join(SAVE_DIR, "distractor_ranker.pkl"))
     joblib.dump(vectorizer, os.path.join(SAVE_DIR, "distractor_vectorizer.pkl"))

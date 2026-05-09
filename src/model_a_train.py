@@ -29,22 +29,23 @@ OPTIONS = ["A", "B", "C", "D"]
 
 os.makedirs(SAVE_DIR, exist_ok=True)
 
+#clean tect
 def clean_text(text):
     text = str(text)
     text = re.sub(r"\s+", " ", text)
     return text.strip()
 
-
+#tokenize text into set of words
 def tokenize(text):
     return set(re.findall(r"[a-zA-Z]+", str(text).lower()))
 
-
+#split article into sentences
 def split_sentences(article):
     article = clean_text(article)
     sentences = re.split(r"(?<=[.!?])\s+", article)
     return [s.strip() for s in sentences if len(s.strip()) > 20]
 
-
+#score sentences based on overlap with answer and length
 def make_verification_dataset(df):
     dfs = []
 
@@ -60,11 +61,12 @@ def make_verification_dataset(df):
 
     return pd.concat(dfs, ignore_index=True)
 
-
+#train supervised verifiers
 def clustering_purity(labels_true, labels_pred):
     cm = confusion_matrix(labels_true, labels_pred)
     return cm.max(axis=0).sum() / cm.sum()
 
+#hard voting training
 def train_supervised_verifiers():
     print("\n" + "=" * 70)
     print("MODEL A: SUPERVISED ANSWER VERIFIERS")
@@ -151,6 +153,7 @@ def train_supervised_verifiers():
 
     return vectorizer, X_train, y_train, X_dev, y_dev, supervised_results
 
+#candidate sentence selection
 def train_ensemble_verifier(X_train, y_train, X_dev, y_dev):
     print("\n" + "=" * 70)
     print("MODEL A: HARD-VOTING ENSEMBLE")
@@ -163,7 +166,7 @@ def train_ensemble_verifier(X_train, y_train, X_dev, y_dev):
     C=2.0,
     random_state=42
     )
-    svm = LinearSVC(
+    svm = LinearSVC(   
     max_iter=1500,
     dual=False,
     class_weight="balanced",
@@ -209,6 +212,7 @@ def train_ensemble_verifier(X_train, y_train, X_dev, y_dev):
         "recall": recall
     }
 
+#k-means clustering
 def run_kmeans(X_dev, y_dev):
     print("\n" + "=" * 70)
     print("MODEL A: K-MEANS CLUSTERING")
@@ -230,7 +234,7 @@ def run_kmeans(X_dev, y_dev):
     print("Saved: kmeans.pkl")
 
     return sil, purity
-
+#label propagation
 def run_label_propagation(X_train, y_train, X_dev, y_dev):
     print("\n" + "=" * 70)
     print("MODEL A: LABEL PROPAGATION")
@@ -271,7 +275,7 @@ def run_label_propagation(X_train, y_train, X_dev, y_dev):
     print("Saved: label_propagation.pkl")
 
     return acc, f1
-
+#candidate sentence selection
 def sentence_score(sentence, answer):
     s_tokens = tokenize(sentence)
     a_tokens = tokenize(answer)
@@ -285,7 +289,7 @@ def sentence_score(sentence, answer):
 
     return overlap + answer_bonus - length_penalty
 
-
+#choose candidate sentence from article based on answer
 def choose_candidate_sentence(article, answer):
     sentences = split_sentences(article)
 
@@ -343,7 +347,7 @@ def generate_candidate_questions(sentence, answer):
 
     return questions
 
-
+#train question generation ranker
 def build_question_ranker_dataset(df, max_rows=8000):
     """
     Positive examples:
@@ -394,7 +398,7 @@ def build_question_ranker_dataset(df, max_rows=8000):
 
     return pd.DataFrame(rows)
 
-
+#make feature text for question ranker
 def make_question_ranker_feature_text(df):
     return (
         df["question_text"].fillna("") + " " +

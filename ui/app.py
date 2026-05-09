@@ -15,7 +15,6 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "s
 from inference import generate_quiz, verify_answer
 from model_b_train import get_distractor_candidates, get_hints
 
-# ── Page Config ──────────────────────────
 st.set_page_config(
     page_title="RC Quiz System",
     page_icon="📚",
@@ -30,7 +29,6 @@ def safe_html(value):
     return html.escape(str(value))
 
 
-# ── CSS ──────────────────────────────────
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -528,10 +526,6 @@ details[data-testid="stExpander"] summary {
 </style>
 """, unsafe_allow_html=True)
 
-
-# ════════════════════════════════════════
-# MODEL A HELPERS
-# ════════════════════════════════════════
 def clean_text(text):
     text = str(text)
     text = re.sub(r"\s+", " ", text)
@@ -629,8 +623,6 @@ def model_a_generate_question(article, correct_answer,
     )
     return best_question, candidate_sentence, ranker_used
 
-
-# ── Load Models ──────────────────────────
 @st.cache_resource
 def build_model_b_eval_dataset(df):
     rows = []
@@ -678,7 +670,6 @@ def load_sample_data():
     return pd.read_csv("data/processed/test.csv")
 
 
-# ── Session State ─────────────────────────
 for key, val in {
     "result": None, "hints_used": 0, "answer_revealed": False,
     "selected": None, "checked": False, "session_log": [],
@@ -688,7 +679,6 @@ for key, val in {
         st.session_state[key] = val
 
 
-# ── Load everything ──────────────────────
 try:
     lr, svm, vec_a, question_ranker, question_ranker_vectorizer, distractor_model, vec_b = load_models()
     df = load_sample_data()
@@ -698,9 +688,6 @@ except Exception as e:
     st.error(f"Error loading models: {e}")
 
 
-# ════════════════════════════════════════
-# SIDEBAR
-# ════════════════════════════════════════
 with st.sidebar:
     st.markdown("""
     <div class="rc-sidebar-brand">
@@ -730,7 +717,6 @@ model_b<br>
     """, unsafe_allow_html=True)
 
 
-# ── Page header ───────────────────────────
 PAGE_META = {
     "Article input": ("Input", "Paste or load a reading passage"),
     "Quiz": ("Quiz", "Answer the generated question"),
@@ -748,10 +734,6 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-
-# ════════════════════════════════════════
-# SCREEN 1 — Article Input
-# ════════════════════════════════════════
 if page == "Article input":
     col_main, col_ctrl = st.columns([3, 1.2], gap="large")
 
@@ -856,9 +838,6 @@ if page == "Article input":
             st.balloons()
 
 
-# ════════════════════════════════════════
-# SCREEN 2 — Quiz
-# ════════════════════════════════════════
 elif page == "Quiz":
     if st.session_state.result is None:
         st.warning("No quiz loaded yet — go to Article input and click Generate quiz.")
@@ -950,9 +929,6 @@ elif page == "Quiz":
         })
 
 
-# ════════════════════════════════════════
-# SCREEN 3 — Hints
-# ════════════════════════════════════════
 elif page == "Hints":
     if st.session_state.result is None:
         st.warning("No quiz loaded yet — go to Article input first.")
@@ -1000,9 +976,8 @@ elif page == "Hints":
             f'<strong>{safe_html(st.session_state.result["correct_answer"])}</strong></div>',
             unsafe_allow_html=True
         )
-# ════════════════════════════════════════
-# SCREEN 4 — Dashboard
-# ════════════════════════════════════════
+
+
 elif page == "Dashboard":
     MODEL_A_RESULTS = {
         "Logistic Regression":  [51.60, 0.4801, 0.2599, 0.5065],
@@ -1021,7 +996,6 @@ elif page == "Dashboard":
         columns=["Predicted Incorrect", "Predicted Correct"]
     )
 
-    # ── Live session ──
     st.markdown('<div class="rc-section">Live session</div>', unsafe_allow_html=True)
     if st.session_state.session_log:
         log_df  = pd.DataFrame(st.session_state.session_log)
@@ -1042,7 +1016,6 @@ elif page == "Dashboard":
     if log_df.empty:
         st.info("No quiz attempts yet — complete a quiz to see live metrics.")
 
-    # ── Model A ──
     st.markdown('<div class="rc-section">Model A — verifier metrics</div>', unsafe_allow_html=True)
     a1, a2, a3, a4 = st.columns(4)
     a1.metric("Ensemble accuracy", "51.63%")
@@ -1057,7 +1030,6 @@ elif page == "Dashboard":
     st.markdown("**Ensemble confusion matrix**")
     st.dataframe(ENSEMBLE_CM, use_container_width=True)
 
-    # ── Unsupervised ──
     st.markdown('<div class="rc-section">Model A — unsupervised / semi-supervised</div>',
                 unsafe_allow_html=True)
     u1, u2, u3, u4 = st.columns(4)
@@ -1066,7 +1038,6 @@ elif page == "Dashboard":
     u3.metric("Label prop accuracy", UNSUPERVISED_RESULTS["Label Propagation Accuracy"])
     u4.metric("Label prop macro F1", UNSUPERVISED_RESULTS["Label Propagation Macro F1"])
 
-    # ── Model B ──
     st.markdown('<div class="rc-section">Model B — distractor ranker</div>', unsafe_allow_html=True)
     try:
         b_acc, b_precision, b_recall, b_macro_f1, b_cm_df = evaluate_model_b_static(
@@ -1081,7 +1052,6 @@ elif page == "Dashboard":
     except Exception as e:
         st.warning(f"Could not calculate Model B metrics: {e}")
 
-    # ── Session log ──
     st.markdown('<div class="rc-section">Session log</div>', unsafe_allow_html=True)
     if not log_df.empty:
         st.dataframe(log_df, use_container_width=True)
